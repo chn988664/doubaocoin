@@ -1,0 +1,223 @@
+#!/usr/bin/env python3
+# Copyright (c) 2026 DouBaoCoin developers
+# Distributed under the MIT software license, see COPYING.
+"""Single-threaded experimental CPU miner; mainnet requires explicit authorization."""
+import argparse
+import base64
+import hashlib
+import json
+import os
+import signal
+import struct
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+STOP = False
+
+
+def stop(_signum, _frame):
+    global STOP
+    STOP = True
+
+
+def sha256d(data):
+    return hashlib.sha256(hashlib.sha256(data).digest()).digest()
+
+
+def varint(n):
+    if n < 0xfd:
+        return bytes([n])
+    if n <= 0xffff:
+        return b'\xfd' + struct.pack('<H', n)
+    if n <= 0xffffffff:
+        return b'\xfe' + struct.pack('<I', n)
+    return b'\xff' + struct.pack('<Q', n)
+
+
+def push(data):
+    if len(data) > 75:
+        raise ValueError('coinbase item too long')
+    return bytes([len(data)]) + data
+
+
+def script_number(n):
+    if n == 0:
+        return b''
+    value = bytearray()
+    while n:
+        value.append(n & 255)
+        n >>= 8
+    if value[-1] & 0x80:
+        value.append(0)
+    return bytes(value)
+
+
+def target_from_bits(bits):
+    exponent, mantissa = bits >> 24, bits & 0x7fffff
+    if bits & 0x800000 or mantissa == 0:
+        raise ValueError('negative or zero compact target')
+    target = mantissa >> (8 * (3 - exponent)) if exponent <= 3 else mantissa << (8 * (exponent - 3))
+    if not 0 < target < (1 << 256):
+        raise ValueError('compact target overflow')
+    return target
+
+
+def merkle(hashes):
+    while len(hashes) > 1:
+        if len(hashes) & 1:
+            hashes.append(hashes[-1])
+        hashes = [sha256d(hashes[i] + hashes[i + 1]) for i in range(0, len(hashes), 2)]
+    return hashes[0]
+
+
+def rpc(port, cookie, method, params=()):
+    # The URL is deliberately fixed to loopback; cookie contents never appear in arguments or logs.
+    auth = base64.b64encode(cookie.read_bytes().strip()).decode('ascii')
+    request = urllib.request.Request(
+        f'http://127.0.0.1:{port}/',
+        json.dumps({'jsonrpc': '1.0', 'id': 'miner', 'method': method, 'params': list(params)}).encode(),
+        {'Content-Type': 'application/json', 'Authorization': 'Basic ' + auth})
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            result = json.load(response)
+    except urllib.error.HTTPError as exc:
+        # RPC error bodies are parsed rather than printing headers or credentials.
+        try:
+            result = json.load(exc)
+        except (ValueError, OSError):
+            raise RuntimeError(f'RPC HTTP status {exc.code}') from None
+    if result.get('error'):
+        raise RuntimeError(f"RPC {method}: {result['error'].get('message', 'error')}")
+    return result['result']
+
+
+def make_work(template, script, extra):
+    bits = int(template['bits'], 16)
+    target = target_from_bits(bits)
+    if target != int(template['target'], 16):
+        raise ValueError('template target does not match compact bits')
+    if template['noncerange'] != '00000000ffffffff':
+        raise ValueError('unsupported nonce range')
+    unknown_rules = [rule for rule in template['rules'] if rule.startswith('!') and rule != '!segwit']
+    if unknown_rules:
+        raise ValueError('unsupported mandatory template rules: ' + ', '.join(unknown_rules))
+    height = template['height']
+    height_prefix = bytes([0x50 + height]) if 1 <= height <= 16 else push(script_number(height))
+    sig = height_prefix + b''.join(push(bytes.fromhex(v)) for v in template['coinbaseaux'].values()) + push(struct.pack('<Q', extra))
+    if not 2 <= len(sig) <= 100:
+        raise ValueError('invalid coinbase script length')
+    txin = bytes(32) + b'\xff' * 4 + varint(len(sig)) + sig + b'\xff' * 4
+    output = struct.pack('<Q', template['coinbasevalue']) + varint(len(script)) + script
+    commitment = template.get('default_witness_commitment')
+    outputs = varint(2 if commitment else 1) + output
+    if commitment:
+        witness_script = bytes.fromhex(commitment)
+        outputs += bytes(8) + varint(len(witness_script)) + witness_script
+    version = struct.pack('<I', 2)
+    locktime = bytes(4)
+    stripped = version + b'\x01' + txin + outputs + locktime
+    coinbase = (version + b'\x00\x01' + b'\x01' + txin + outputs + b'\x01\x20' + bytes(32) + locktime) if commitment else stripped
+    txs = template['transactions']
+    root = merkle([sha256d(stripped)] + [bytes.fromhex(tx['txid'])[::-1] for tx in txs])
+    header = (struct.pack('<I', template['version']) + bytes.fromhex(template['previousblockhash'])[::-1] + root +
+              struct.pack('<III', template['curtime'], bits, 0))
+    return header, target, coinbase, txs
+
+
+def mine(args):
+    cookie = Path(args.cookie).expanduser()
+    info = rpc(args.port, cookie, 'getblockchaininfo')
+    # Chain labels alone are shared with Bitcoin and cannot identify the network.
+    if info['chain'] == 'regtest':
+        if args.mainnet_genesis is not None:
+            raise RuntimeError('mainnet genesis cannot be specified for regtest')
+        expected_genesis = '373225875e86f5100edfdc32cf34f26e030f400ea17c6d77bdff27f4c73a4aaf'
+    elif info['chain'] == 'main':
+        # There is intentionally no default: only an explicit, approved identity
+        # may authorize mining after the node itself is approved for mainnet.
+        expected_genesis = args.mainnet_genesis
+        if expected_genesis is None or len(expected_genesis) != 64:
+            raise RuntimeError('mainnet mining requires an explicitly approved genesis hash')
+        try:
+            if len(bytes.fromhex(expected_genesis)) != 32 or int(expected_genesis, 16) == 0:
+                raise ValueError
+        except ValueError:
+            raise RuntimeError('invalid approved genesis hash') from None
+        expected_genesis = expected_genesis.lower()
+    else:
+        raise RuntimeError('unsupported chain')
+    if rpc(args.port, cookie, 'getblockhash', [0]) != expected_genesis:
+        raise RuntimeError('node genesis does not match the specified DouBaoCoin chain')
+    address = rpc(args.port, cookie, 'validateaddress', [args.address])
+    if not address.get('isvalid'):
+        raise RuntimeError('invalid address for this chain')
+    script = bytes.fromhex(address['scriptPubKey'])
+    extra = int.from_bytes(os.urandom(8), 'little')
+    accepted = 0
+    while not STOP and (args.blocks == 0 or accepted < args.blocks):
+        try:
+            template = rpc(args.port, cookie, 'getblocktemplate', [{'rules': ['segwit']}])
+            header, target, coinbase, txs = make_work(template, script, extra)
+            extra = (extra + 1) & 0xffffffffffffffff
+            started = time.monotonic()
+            nonce = 0
+            mutable_header = bytearray(header)
+            while nonce <= 0xffffffff and not STOP:
+                struct.pack_into('<I', mutable_header, 76, nonce)
+                digest = sha256d(mutable_header)
+                if int.from_bytes(digest, 'little') <= target:
+                    if rpc(args.port, cookie, 'getbestblockhash') != template['previousblockhash']:
+                        print('stale work discarded', flush=True)
+                        break
+                    block = bytes(mutable_header) + varint(len(txs) + 1) + coinbase + b''.join(bytes.fromhex(tx['data']) for tx in txs)
+                    result = rpc(args.port, cookie, 'submitblock', [block.hex()])
+                    if result is None:
+                        block_hash = digest[::-1].hex()
+                        # A competing tip can arrive after our stale check; only count work on the active chain.
+                        confirmation = rpc(args.port, cookie, 'getblockheader', [block_hash])['confirmations']
+                        if confirmation > 0:
+                            accepted += 1
+                            print(f"accepted height={template['height']} hash={block_hash}", flush=True)
+                        else:
+                            print(f'block accepted on a stale branch hash={block_hash}', flush=True)
+                    else:
+                        print(f'block rejected: {result}', file=sys.stderr, flush=True)
+                    break
+                nonce += 1
+                if nonce % 4096 == 0 and time.monotonic() - started >= args.refresh:
+                    print(f'work refreshed hashes={nonce} elapsed={time.monotonic()-started:.2f}s', flush=True)
+                    break
+        except (OSError, ValueError, RuntimeError, KeyError, urllib.error.URLError) as exc:
+            print(f'miner error: {exc}; retrying', file=sys.stderr, flush=True)
+            for _ in range(10):
+                if STOP:
+                    break
+                time.sleep(0.5)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--cookie', required=True, help='regtest cookie file path')
+    parser.add_argument('--port', type=int, default=49326)
+    parser.add_argument('--address', required=True, help='payout address for the selected node chain')
+    parser.add_argument('--mainnet-genesis', help='explicit approved mainnet genesis hash; never set before authorization')
+    parser.add_argument('--blocks', type=int, default=1, help='number of blocks; 0 continues until stopped')
+    parser.add_argument('--refresh', type=float, default=5, help='maximum work age in seconds')
+    args = parser.parse_args()
+    if not 1 <= args.port <= 65535 or args.blocks < 0 or not 0.1 <= args.refresh <= 60:
+        parser.error('invalid port, block count, or refresh interval')
+    signal.signal(signal.SIGINT, stop)
+    signal.signal(signal.SIGTERM, stop)
+    try:
+        mine(args)
+    except (OSError, ValueError, RuntimeError, KeyError, urllib.error.URLError) as exc:
+        print(f'miner error: {exc}', file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

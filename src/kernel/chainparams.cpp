@@ -14,6 +14,7 @@
 #include <crypto/hex_base.h>
 #include <hash.h>
 #include <kernel/messagestartchars.h>
+#include <pow.h>
 #include <primitives/block.h>
 #include <primitives/transaction.h>
 #include <script/interpreter.h>
@@ -78,8 +79,8 @@ static CBlock CreateGenesisBlock(uint32_t nTime, uint32_t nNonce, uint32_t nBits
 }
 #endif
 
-// This genesis is exclusively for isolated development networks. Mainnet genesis
-// time and difficulty have not been approved and must not be inferred from it.
+// This genesis is exclusively for isolated development networks. Its time,
+// difficulty and identity must not be treated as mainnet genesis parameters.
 static CBlock CreateDouBaoTestGenesis(uint32_t time, uint32_t nonce)
 {
     constexpr char timestamp[] = "DouBaoCoin Genesis 2026";
@@ -615,6 +616,87 @@ public:
  */
 #endif // DOUBAOCOIN_UPSTREAM_TEST_PARAMS
 
+// C02 is approved; the public factory still refuses mainnet until the owner
+// approves its genesis and launch. Never infer those inputs from regtest.
+#ifndef DOUBAOCOIN_UPSTREAM_TEST_PARAMS
+struct DouBaoMainnetInputs {
+    CBlock genesis_block;
+};
+
+class CDouBaoMainParams final : public CChainParams
+{
+public:
+    explicit CDouBaoMainParams(const DouBaoMainnetInputs& inputs)
+    {
+        m_chain_type = ChainType::MAIN;
+        consensus.signet_blocks = false;
+        consensus.signet_challenge.clear();
+        consensus.nSubsidyHalvingInterval = 210000;
+        consensus.BIP34Height = 1;
+        consensus.BIP34Hash = uint256{};
+        consensus.BIP65Height = 1;
+        consensus.BIP66Height = 1;
+        consensus.CSVHeight = 1;
+        consensus.SegwitHeight = 1;
+        consensus.MinBIP9WarningHeight = 0;
+        consensus.powLimit = uint256{"00000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
+        consensus.nPowTargetTimespan = 14 * 24 * 60 * 60;
+        consensus.nPowTargetSpacing = 10 * 60;
+        consensus.fPowAllowMinDifficultyBlocks = false;
+        consensus.enforce_BIP94 = false;
+        consensus.fPowNoRetargeting = false;
+        auto& dummy = consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY];
+        dummy.bit = 28;
+        dummy.nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
+        dummy.nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
+        dummy.min_activation_height = 0;
+        dummy.threshold = 1815;
+        dummy.period = 2016;
+        consensus.nMinimumChainWork = uint256{};
+        consensus.defaultAssumeValid = uint256{};
+
+        pchMessageStart = {0xfb, 0xc7, 0xb2, 0xd4};
+        nDefaultPort = 49321;
+        nPruneAfterHeight = 1000;
+        m_assumed_blockchain_size = 0;
+        m_assumed_chain_state_size = 0;
+        base58Prefixes[PUBKEY_ADDRESS] = {0x1c};
+        base58Prefixes[SCRIPT_ADDRESS] = {0x3f};
+        base58Prefixes[SECRET_KEY] = {0x9f};
+        base58Prefixes[EXT_PUBLIC_KEY] = {0x02, 0xdb, 0x00, 0x01};
+        base58Prefixes[EXT_SECRET_KEY] = {0x02, 0xdb, 0x00, 0x02};
+        bech32_hrp = "dbcn";
+        fDefaultConsistencyChecks = false;
+        m_is_mockable_chain = false;
+
+        // The root is the independently verified C07 transaction hash, not a
+        // genesis block hash. It cannot identify a mainnet without its header.
+        genesis = inputs.genesis_block;
+        const uint256 c07_root{"334f8d85d7a7c0b6df26cccde033bc1be9a9ee6f90ac736f2f591039191ded85"};
+        // C02 fixes the genesis target; accepting another valid target here
+        // would silently create a different consensus network.
+        constexpr uint32_t approved_genesis_bits{0x1d00ffff};
+        if (genesis.nVersion != 1 || genesis.nBits != approved_genesis_bits ||
+            !genesis.hashPrevBlock.IsNull() || genesis.vtx.size() != 1 || !genesis.vtx[0] ||
+            genesis.vtx[0]->HasWitness() || genesis.hashMerkleRoot != c07_root ||
+            BlockMerkleRoot(genesis) != c07_root ||
+            !CheckProofOfWork(genesis.GetHash(), genesis.nBits, consensus)) {
+            throw std::runtime_error("DouBaoCoin: invalid mainnet genesis or consensus inputs");
+        }
+        consensus.hashGenesisBlock = genesis.GetHash();
+        // Recomputed for a conservative 2026 genesis bound and 2036 horizon,
+        // using one minimum-work header as the smallest positive threshold.
+        // Zero initial chainwork can bypass presync; this is not an anti-DoS
+        // guarantee for an entirely new node and must be reviewed for release.
+        m_headers_sync_params = HeadersSyncParams{
+            .commitment_period = 338,
+            .redownload_buffer_size = 14319,
+        };
+        chainTxData = ChainTxData{.nTime = genesis.nTime, .tx_count = 1, .dTxRate = 0.001};
+    }
+};
+#endif
+
 class CRegTestParams : public CChainParams
 {
 public:
@@ -750,7 +832,7 @@ std::unique_ptr<const CChainParams> CChainParams::Main(const MainNetOptions& opt
     return std::make_unique<const CMainParams>(options);
 #else
     (void)options;
-    throw std::runtime_error("DouBaoCoin: mainnet parameters are not approved");
+    throw std::runtime_error("DouBaoCoin: mainnet genesis and launch are not approved");
 #endif
 }
 
@@ -795,6 +877,12 @@ std::optional<ChainType> GetNetworkForMagic(const MessageStartChars& message)
         return ChainType::TESTNET;
     } else if (std::ranges::equal(message, signet_msg)) {
         return ChainType::SIGNET;
+    }
+#else
+    // Recognizing a snapshot identity does not permit constructing or starting mainnet.
+    constexpr MessageStartChars mainnet_msg{0xfb, 0xc7, 0xb2, 0xd4};
+    if (std::ranges::equal(message, mainnet_msg)) {
+        return ChainType::MAIN;
     }
 #endif
     if (std::ranges::equal(message, testnet4_msg)) {
