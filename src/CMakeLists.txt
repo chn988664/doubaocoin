@@ -175,6 +175,7 @@ if(ENABLE_WALLET)
       bitcoin_common
       bitcoin_util
     )
+    set_target_properties(bitcoin-wallet PROPERTIES OUTPUT_NAME "doubaocoin-wallet")
     install_binary_component(bitcoin-wallet HAS_MANPAGE)
   endif()
 endif()
@@ -326,6 +327,7 @@ if(BUILD_DAEMON)
     bitcoin_node
     $<TARGET_NAME_IF_EXISTS:bitcoin_wallet>
   )
+  set_target_properties(bitcoind PROPERTIES OUTPUT_NAME "doubaocoind")
   install_binary_component(bitcoind HAS_MANPAGE)
 endif()
 if(ENABLE_IPC AND BUILD_DAEMON)
@@ -369,6 +371,7 @@ if(BUILD_CLI)
     bitcoin_ipc
     bitcoin_util
   )
+  set_target_properties(bitcoin-cli PROPERTIES OUTPUT_NAME "doubaocoin-cli")
   install_binary_component(bitcoin-cli HAS_MANPAGE)
 endif()
 
@@ -385,6 +388,7 @@ if(BUILD_TX)
     bitcoin_util
     univalue
   )
+  set_target_properties(bitcoin-tx PROPERTIES OUTPUT_NAME "doubaocoin-tx")
   install_binary_component(bitcoin-tx HAS_MANPAGE)
 endif()
 
@@ -401,6 +405,7 @@ if(BUILD_UTIL)
     bitcoin_util
     univalue
   )
+  set_target_properties(bitcoin-util PROPERTIES OUTPUT_NAME "doubaocoin-util")
   install_binary_component(bitcoin-util HAS_MANPAGE)
 endif()
 

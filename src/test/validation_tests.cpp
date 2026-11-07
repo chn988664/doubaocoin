@@ -49,7 +49,7 @@ BOOST_AUTO_TEST_CASE(block_subsidy_test)
 {
     const auto chainParams = CreateChainParams(*m_node.args, ChainType::MAIN);
     TestBlockSubsidyHalvings(chainParams->GetConsensus()); // As in main
-    TestBlockSubsidyHalvings(150); // As in regtest
+    TestBlockSubsidyHalvings(150); // Alternate interval retained from the upstream test
     TestBlockSubsidyHalvings(1000); // Just another interval
 }
 
@@ -141,11 +141,14 @@ BOOST_AUTO_TEST_CASE(test_assumeutxo)
         BOOST_CHECK(!out);
     }
 
+    BOOST_REQUIRE(params->AssumeutxoForHeight(110));
     const auto out110 = *params->AssumeutxoForHeight(110);
     BOOST_CHECK_EQUAL(out110.hash_serialized.ToString(), "86e9a1205b418b16dde3a18a78c730e30137e28466bda5dbf6b33ab8fc05447c");
     BOOST_CHECK_EQUAL(out110.m_chain_tx_count, 111U);
 
-    const auto out110_2 = *params->AssumeutxoForBlockhash(uint256{"135eec25a6fb277884e5824e7aa7d052c4868161c99a5122170b5266f86c273d"});
+    BOOST_CHECK(!params->AssumeutxoForBlockhash(uint256{"135eec25a6fb277884e5824e7aa7d052c4868161c99a5122170b5266f86c273d"}));
+    BOOST_REQUIRE(params->AssumeutxoForBlockhash(uint256{"4402b3199b8fb235736cabd342b3aac612bb6b121e76d1202d0bbc5bcf3e965e"}));
+    const auto out110_2 = *params->AssumeutxoForBlockhash(uint256{"4402b3199b8fb235736cabd342b3aac612bb6b121e76d1202d0bbc5bcf3e965e"});
     BOOST_CHECK_EQUAL(out110_2.hash_serialized.ToString(), "86e9a1205b418b16dde3a18a78c730e30137e28466bda5dbf6b33ab8fc05447c");
     BOOST_CHECK_EQUAL(out110_2.m_chain_tx_count, 111U);
 }

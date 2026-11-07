@@ -4,6 +4,12 @@
 
 # Do not use generator expressions in test sources because the
 # SOURCES property is processed to gather test suite macros.
+# The historical network factories are compiled only into the upstream test
+# executable, never into nodes, tools, or the kernel library.
+add_library(doubaocoin_upstream_test_chainparams OBJECT ../kernel/chainparams.cpp ../chainparamsbase.cpp)
+target_compile_definitions(doubaocoin_upstream_test_chainparams PRIVATE DOUBAOCOIN_UPSTREAM_TEST_PARAMS)
+target_link_libraries(doubaocoin_upstream_test_chainparams PRIVATE core_interface bitcoin_consensus bitcoin_util univalue secp256k1)
+
 add_executable(test_bitcoin
   main.cpp
   addrman_tests.cpp
@@ -141,6 +147,7 @@ add_executable(test_bitcoin
   validationinterface_tests.cpp
   versionbits_tests.cpp
 )
+target_sources(test_bitcoin PRIVATE $<TARGET_OBJECTS:doubaocoin_upstream_test_chainparams>)
 
 include(TargetDataSources)
 target_json_data_sources(test_bitcoin
@@ -149,6 +156,7 @@ target_json_data_sources(test_bitcoin
   data/blockfilters.json
   data/key_io_invalid.json
   data/key_io_valid.json
+  data/doubaocoin_key_io_valid.json
   data/script_tests.json
   data/sighash.json
   data/siphash.json

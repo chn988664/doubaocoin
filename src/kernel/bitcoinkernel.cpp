@@ -430,7 +430,10 @@ public:
         }
 
         if (!m_chainparams) {
-            m_chainparams = CChainParams::Main();
+            // There is no approved default network. Callers must select one of
+            // the explicitly enabled DouBaoCoin development chains.
+            sane = false;
+            return;
         }
         if (!m_notifications) {
             m_notifications = std::make_shared<KernelNotifications>(btck_NotificationInterfaceCallbacks{
@@ -842,32 +845,29 @@ btck_ChainParameters* btck_chain_parameters_create(const btck_ChainType chain_ty
 {
     switch (chain_type) {
     case btck_ChainType_MAINNET: {
-        return btck_ChainParameters::ref(const_cast<CChainParams*>(CChainParams::Main().release()));
+        return nullptr;
     }
     case btck_ChainType_TESTNET: {
-        return btck_ChainParameters::ref(const_cast<CChainParams*>(CChainParams::TestNet().release()));
+        return nullptr;
     }
     case btck_ChainType_TESTNET_4: {
         return btck_ChainParameters::ref(const_cast<CChainParams*>(CChainParams::TestNet4().release()));
     }
     case btck_ChainType_SIGNET: {
-        return btck_ChainParameters::ref(const_cast<CChainParams*>(CChainParams::SigNet().release()));
+        return nullptr;
     }
     case btck_ChainType_REGTEST: {
         return btck_ChainParameters::ref(const_cast<CChainParams*>(CChainParams::RegTest().release()));
     }
     }
-    assert(false);
+    return nullptr;
 }
 
 btck_ChainParameters* btck_chain_parameters_create_signet(const void* challenge, size_t challenge_len)
 {
-    assert(challenge != nullptr || challenge_len == 0);
-    const uint8_t* p = static_cast<const uint8_t*>(challenge);
-    CChainParams::SigNetOptions options{
-        .challenge = std::vector<uint8_t>{p, p + challenge_len},
-    };
-    return btck_ChainParameters::ref(const_cast<CChainParams*>(CChainParams::SigNet(options).release()));
+    (void)challenge;
+    (void)challenge_len;
+    return nullptr;
 }
 
 btck_ChainParameters* btck_chain_parameters_copy(const btck_ChainParameters* chain_parameters)

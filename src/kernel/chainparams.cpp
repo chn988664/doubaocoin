@@ -5,7 +5,9 @@
 
 #include <kernel/chainparams.h>
 
+#ifdef DOUBAOCOIN_UPSTREAM_TEST_PARAMS
 #include <chainparamsseeds.h>
+#endif
 #include <consensus/amount.h>
 #include <consensus/merkle.h>
 #include <consensus/params.h>
@@ -30,10 +32,12 @@
 #include <iterator>
 #include <map>
 #include <span>
+#include <stdexcept>
 #include <utility>
 
 using namespace util::hex_literals;
 
+#ifdef DOUBAOCOIN_UPSTREAM_TEST_PARAMS
 static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesisOutputScript, uint32_t nTime, uint32_t nNonce, uint32_t nBits, int32_t nVersion, const CAmount& genesisReward)
 {
     CMutableTransaction txNew;
@@ -72,6 +76,30 @@ static CBlock CreateGenesisBlock(uint32_t nTime, uint32_t nNonce, uint32_t nBits
     const CScript genesisOutputScript = CScript() << "04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f"_hex << OP_CHECKSIG;
     return CreateGenesisBlock(pszTimestamp, genesisOutputScript, nTime, nNonce, nBits, nVersion, genesisReward);
 }
+#endif
+
+// This genesis is exclusively for isolated development networks. Mainnet genesis
+// time and difficulty have not been approved and must not be inferred from it.
+static CBlock CreateDouBaoTestGenesis(uint32_t time, uint32_t nonce)
+{
+    constexpr char timestamp[] = "DouBaoCoin Genesis 2026";
+    CMutableTransaction tx;
+    tx.version = 1;
+    tx.vin.resize(1);
+    tx.vout.resize(1);
+    tx.vin[0].scriptSig = CScript() << OP_0 << std::vector<unsigned char>(timestamp, timestamp + sizeof(timestamp) - 1);
+    tx.vout[0].nValue = 50 * COIN;
+    tx.vout[0].scriptPubKey = CScript() << OP_RETURN;
+    CBlock block;
+    block.nVersion = 1;
+    block.nTime = time;
+    block.nBits = 0x207fffff;
+    block.nNonce = nonce;
+    block.vtx.push_back(MakeTransactionRef(std::move(tx)));
+    block.hashPrevBlock.SetNull();
+    block.hashMerkleRoot = BlockMerkleRoot(block);
+    return block;
+}
 
 void CChainParams::ApplyDeploymentOptions(const DeploymentOptions& opts)
 {
@@ -105,6 +133,7 @@ void CChainParams::ApplyDeploymentOptions(const DeploymentOptions& opts)
 /**
  * Main network on which people trade goods and services.
  */
+#ifdef DOUBAOCOIN_UPSTREAM_TEST_PARAMS
 class CMainParams : public CChainParams {
 public:
     CMainParams(const MainNetOptions& opts) {
@@ -584,6 +613,8 @@ public:
  * Regression test: intended for private networks only. Has minimal difficulty to ensure that
  * blocks can be found instantly.
  */
+#endif // DOUBAOCOIN_UPSTREAM_TEST_PARAMS
+
 class CRegTestParams : public CChainParams
 {
 public:
@@ -592,7 +623,7 @@ public:
         m_chain_type = ChainType::REGTEST;
         consensus.signet_blocks = false;
         consensus.signet_challenge.clear();
-        consensus.nSubsidyHalvingInterval = 150;
+        consensus.nSubsidyHalvingInterval = 210000;
         consensus.BIP34Height = 1; // Always active unless overridden
         consensus.BIP34Hash = uint256();
         consensus.BIP65Height = 1;  // Always active unless overridden
@@ -617,51 +648,39 @@ public:
         consensus.nMinimumChainWork = uint256{};
         consensus.defaultAssumeValid = uint256{};
 
-        pchMessageStart[0] = 0xfa;
-        pchMessageStart[1] = 0xbf;
-        pchMessageStart[2] = 0xb5;
-        pchMessageStart[3] = 0xda;
-        nDefaultPort = 18444;
+        pchMessageStart[0] = 0xfb;
+        pchMessageStart[1] = 0xc7;
+        pchMessageStart[2] = 0xb4;
+        pchMessageStart[3] = 0xd4;
+        nDefaultPort = 49325;
         nPruneAfterHeight = opts.fastprune ? 100 : 1000;
         m_assumed_blockchain_size = 0;
         m_assumed_chain_state_size = 0;
 
         ApplyDeploymentOptions(opts.dep_opts);
 
-        genesis = CreateGenesisBlock(1296688602, 2, 0x207fffff, 1, 50 * COIN);
+        genesis = CreateDouBaoTestGenesis(1794000000, 4);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256{"0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206"});
-        assert(genesis.hashMerkleRoot == uint256{"4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"});
+        assert(consensus.hashGenesisBlock == uint256{"373225875e86f5100edfdc32cf34f26e030f400ea17c6d77bdff27f4c73a4aaf"});
+        assert(genesis.hashMerkleRoot == uint256{"334f8d85d7a7c0b6df26cccde033bc1be9a9ee6f90ac736f2f591039191ded85"});
 
         vFixedSeeds.clear(); //!< Regtest mode doesn't have any fixed seeds.
         vSeeds.clear();
-        vSeeds.emplace_back("dummySeed.invalid.");
+
 
         fDefaultConsistencyChecks = true;
         m_is_mockable_chain = true;
 
-        m_assumeutxo_data = {
-            {   // For use by unit tests
-                .height = 110,
-                .hash_serialized = AssumeutxoHash{uint256{"86e9a1205b418b16dde3a18a78c730e30137e28466bda5dbf6b33ab8fc05447c"}},
-                .m_chain_tx_count = 111,
-                .blockhash = uint256{"135eec25a6fb277884e5824e7aa7d052c4868161c99a5122170b5266f86c273d"},
-            },
-            {
-                // For use by fuzz target src/test/fuzz/utxo_snapshot.cpp
-                .height = 200,
-                .hash_serialized = AssumeutxoHash{uint256{"17dcc016d188d16068907cdeb38b75691a118d43053b8cd6a25969419381d13a"}},
-                .m_chain_tx_count = 201,
-                .blockhash = uint256{"385901ccbd69dff6bbd00065d01fb8a9e464dede7cfe0372443884f9b1dcf6b9"},
-            },
-            {
-                // For use by test/functional/feature_assumeutxo.py and test/functional/tool_bitcoin_chainstate.py
-                .height = 299,
-                .hash_serialized = AssumeutxoHash{uint256{"106b2c56233e378a824cf0d5ff2be42ed32c72f1605c9be288d00942908a40ac"}},
-                .m_chain_tx_count = 334,
-                .blockhash = uint256{"0c552ced4721c249a389eb9b08cb8da261cd46f0e7b5f9d064d48f3113406853"},
-            },
-        };
+#ifdef DOUBAOCOIN_UPSTREAM_TEST_PARAMS
+        // Deterministic TestChain100Setup fixture on the DouBaoCoin regtest
+        // genesis. It must never become a trusted runtime snapshot.
+        m_assumeutxo_data = {{
+            .height = 110,
+            .hash_serialized = AssumeutxoHash{uint256{"86e9a1205b418b16dde3a18a78c730e30137e28466bda5dbf6b33ab8fc05447c"}},
+            .m_chain_tx_count = 111,
+            .blockhash = uint256{"4402b3199b8fb235736cabd342b3aac612bb6b121e76d1202d0bbc5bcf3e965e"},
+        }};
+#endif
 
         chainTxData = ChainTxData{
             .nTime = 0,
@@ -669,13 +688,13 @@ public:
             .dTxRate = 0.001, // Set a non-zero rate to make it testable
         };
 
-        base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,111);
-        base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,196);
-        base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,239);
-        base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x35, 0x87, 0xCF};
-        base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x35, 0x83, 0x94};
+        base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,0x72);
+        base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,0x3b);
+        base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,0xf2);
+        base58Prefixes[EXT_PUBLIC_KEY] = {0x02, 0xdb, 0x00, 0x05};
+        base58Prefixes[EXT_SECRET_KEY] = {0x02, 0xdb, 0x00, 0x06};
 
-        bech32_hrp = "bcrt";
+        bech32_hrp = "rdbcn";
 
         // Copied from Testnet4.
         m_headers_sync_params = HeadersSyncParams{
@@ -685,9 +704,39 @@ public:
     }
 };
 
+// A second isolated development chain, distinct from both regtest and Bitcoin.
+// These deliberately easy parameters are not a proposal for a public testnet.
+class CDouBaoTestNetParams : public CRegTestParams
+{
+public:
+    explicit CDouBaoTestNetParams(const TestNetOptions& opts)
+        : CRegTestParams(RegTestOptions{.dep_opts = opts.dep_opts})
+    {
+        m_chain_type = ChainType::TESTNET4;
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
+        pchMessageStart[2] = 0xb3;
+        nDefaultPort = 49323;
+        genesis = CreateDouBaoTestGenesis(1794000001, 1);
+        consensus.hashGenesisBlock = genesis.GetHash();
+        assert(consensus.hashGenesisBlock == uint256{"357eb1881cc459600c6eccff374103991d36c94c2e7afbcc77ccf9de54f84fe4"});
+        m_assumeutxo_data.clear();
+        base58Prefixes[PUBKEY_ADDRESS] = {0x71};
+        base58Prefixes[SCRIPT_ADDRESS] = {0x3a};
+        base58Prefixes[SECRET_KEY] = {0xf1};
+        base58Prefixes[EXT_PUBLIC_KEY] = {0x02, 0xdb, 0x00, 0x03};
+        base58Prefixes[EXT_SECRET_KEY] = {0x02, 0xdb, 0x00, 0x04};
+        bech32_hrp = "tdbcn";
+    }
+};
+
 std::unique_ptr<const CChainParams> CChainParams::SigNet(const SigNetOptions& options)
 {
+#ifdef DOUBAOCOIN_UPSTREAM_TEST_PARAMS
     return std::make_unique<const SigNetParams>(options);
+#else
+    (void)options;
+    throw std::runtime_error("DouBaoCoin: signet is disabled");
+#endif
 }
 
 std::unique_ptr<const CChainParams> CChainParams::RegTest(const RegTestOptions& options)
@@ -697,17 +746,27 @@ std::unique_ptr<const CChainParams> CChainParams::RegTest(const RegTestOptions& 
 
 std::unique_ptr<const CChainParams> CChainParams::Main(const MainNetOptions& options)
 {
+#ifdef DOUBAOCOIN_UPSTREAM_TEST_PARAMS
     return std::make_unique<const CMainParams>(options);
+#else
+    (void)options;
+    throw std::runtime_error("DouBaoCoin: mainnet parameters are not approved");
+#endif
 }
 
 std::unique_ptr<const CChainParams> CChainParams::TestNet(const TestNetOptions& options)
 {
+#ifdef DOUBAOCOIN_UPSTREAM_TEST_PARAMS
     return std::make_unique<const CTestNetParams>(options);
+#else
+    (void)options;
+    throw std::runtime_error("DouBaoCoin: Bitcoin testnet is disabled");
+#endif
 }
 
 std::unique_ptr<const CChainParams> CChainParams::TestNet4(const TestNetOptions& options)
 {
-    return std::make_unique<const CTestNet4Params>(options);
+    return std::make_unique<const CDouBaoTestNetParams>(options);
 }
 
 std::vector<int> CChainParams::GetAvailableSnapshotHeights() const
@@ -723,22 +782,25 @@ std::vector<int> CChainParams::GetAvailableSnapshotHeights() const
 
 std::optional<ChainType> GetNetworkForMagic(const MessageStartChars& message)
 {
-    const auto mainnet_msg = CChainParams::Main()->MessageStart();
-    const auto testnet_msg = CChainParams::TestNet()->MessageStart();
     const auto testnet4_msg = CChainParams::TestNet4()->MessageStart();
     const auto regtest_msg = CChainParams::RegTest()->MessageStart();
+#ifdef DOUBAOCOIN_UPSTREAM_TEST_PARAMS
+    const auto mainnet_msg = CChainParams::Main()->MessageStart();
+    const auto testnet_msg = CChainParams::TestNet()->MessageStart();
     const auto signet_msg = CChainParams::SigNet()->MessageStart();
 
     if (std::ranges::equal(message, mainnet_msg)) {
         return ChainType::MAIN;
     } else if (std::ranges::equal(message, testnet_msg)) {
         return ChainType::TESTNET;
-    } else if (std::ranges::equal(message, testnet4_msg)) {
+    } else if (std::ranges::equal(message, signet_msg)) {
+        return ChainType::SIGNET;
+    }
+#endif
+    if (std::ranges::equal(message, testnet4_msg)) {
         return ChainType::TESTNET4;
     } else if (std::ranges::equal(message, regtest_msg)) {
         return ChainType::REGTEST;
-    } else if (std::ranges::equal(message, signet_msg)) {
-        return ChainType::SIGNET;
     }
     return std::nullopt;
 }

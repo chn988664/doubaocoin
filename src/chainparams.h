@@ -23,6 +23,9 @@ std::unique_ptr<const CChainParams> CreateChainParams(const ArgsManager& args, C
  */
 const CChainParams &Params();
 
+/** Reject networks that are not enabled for isolated development. */
+void CheckEnabledChain(ChainType chain);
+
 /**
  * Sets the params returned by Params() to those for the given chain type.
  */

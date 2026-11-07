@@ -58,17 +58,17 @@ static std::optional<int> WalletAppInit(ArgsManager& args, int argc, char* argv[
     }
     const bool missing_args{argc < 2};
     if (missing_args || HelpRequested(args) || args.GetBoolArg("-version", false)) {
-        std::string strUsage = strprintf("%s bitcoin-wallet utility version", CLIENT_NAME) + " " + FormatFullVersion() + "\n";
+        std::string strUsage = strprintf("%s doubaocoin-wallet utility version", CLIENT_NAME) + " " + FormatFullVersion() + "\n";
 
         if (args.GetBoolArg("-version", false)) {
             strUsage += FormatParagraph(LicenseInfo());
         } else {
             strUsage += "\n"
-                "bitcoin-wallet is an offline tool for creating and interacting with " CLIENT_NAME " wallet files.\n\n"
-                "By default bitcoin-wallet will act on wallets in the default mainnet wallet directory in the datadir.\n\n"
+                "doubaocoin-wallet is an offline tool for creating and interacting with " CLIENT_NAME " wallet files.\n\n"
+                "Select -regtest or -testnet4 to use an isolated development wallet.\n\n"
                 "To change the target wallet, use the -datadir, -wallet and (test)chain selection arguments.\n"
                 "\n"
-                "Usage: bitcoin-wallet [options] <command>\n"
+                "Usage: doubaocoin-wallet [options] <command>\n"
                 "\n";
             strUsage += "\n" + args.GetHelpMessage();
         }
@@ -88,6 +88,7 @@ static std::optional<int> WalletAppInit(ArgsManager& args, int argc, char* argv[
         return EXIT_FAILURE;
     }
     // Check for chain settings (Params() calls are only valid after this clause)
+    CheckEnabledChain(args.GetChainType());
     SelectParams(args.GetChainType());
 
     return std::nullopt;
@@ -118,7 +119,7 @@ MAIN_FUNCTION
 
     const auto command = args.GetCommand();
     if (!command) {
-        tfm::format(std::cerr, "No method provided. Run `bitcoin-wallet -help` for valid methods.\n");
+        tfm::format(std::cerr, "No method provided. Run `doubaocoin-wallet -help` for valid methods.\n");
         return EXIT_FAILURE;
     }
     if (command->args.size() != 0) {

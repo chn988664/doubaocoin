@@ -162,6 +162,15 @@ std::unique_ptr<const CChainParams> CreateChainParams(const ArgsManager& args, c
     assert(false);
 }
 
+void CheckEnabledChain(const ChainType chain)
+{
+    // Only isolated development chains are enabled while mainnet consensus
+    // and the remaining network identities are awaiting review.
+    if (chain != ChainType::REGTEST && chain != ChainType::TESTNET4) {
+        throw std::runtime_error("DouBaoCoin: this network is disabled; mainnet parameters are not approved. Use -regtest or -testnet4 for isolated development only.");
+    }
+}
+
 void SelectParams(const ChainType chain)
 {
     SelectBaseParams(chain);

@@ -211,12 +211,12 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
 }
 } // namespace
 
-CKey DecodeSecret(const std::string& str)
+CKey DecodeSecret(const std::string& str, const CChainParams& params)
 {
     CKey key;
     std::vector<unsigned char> data;
     if (DecodeBase58Check(str, data, 34)) {
-        const std::vector<unsigned char>& privkey_prefix = Params().Base58Prefix(CChainParams::SECRET_KEY);
+        const std::vector<unsigned char>& privkey_prefix = params.Base58Prefix(CChainParams::SECRET_KEY);
         if ((data.size() == 32 + privkey_prefix.size() || (data.size() == 33 + privkey_prefix.size() && data.back() == 1)) &&
             std::equal(privkey_prefix.begin(), privkey_prefix.end(), data.begin())) {
             bool compressed = data.size() == 33 + privkey_prefix.size();
@@ -229,10 +229,15 @@ CKey DecodeSecret(const std::string& str)
     return key;
 }
 
-std::string EncodeSecret(const CKey& key)
+CKey DecodeSecret(const std::string& str)
+{
+    return DecodeSecret(str, Params());
+}
+
+std::string EncodeSecret(const CKey& key, const CChainParams& params)
 {
     assert(key.IsValid());
-    std::vector<unsigned char> data = Params().Base58Prefix(CChainParams::SECRET_KEY);
+    std::vector<unsigned char> data = params.Base58Prefix(CChainParams::SECRET_KEY);
     data.insert(data.end(), UCharCast(key.begin()), UCharCast(key.end()));
     if (key.IsCompressed()) {
         data.push_back(1);
@@ -240,6 +245,11 @@ std::string EncodeSecret(const CKey& key)
     std::string ret = EncodeBase58Check(data);
     memory_cleanse(data.data(), data.size());
     return ret;
+}
+
+std::string EncodeSecret(const CKey& key)
+{
+    return EncodeSecret(key, Params());
 }
 
 CExtPubKey DecodeExtPubKey(const std::string& str)
@@ -294,7 +304,12 @@ std::string EncodeExtKey(const CExtKey& key)
 
 std::string EncodeDestination(const CTxDestination& dest)
 {
-    return std::visit(DestinationEncoder(Params()), dest);
+    return EncodeDestination(dest, Params());
+}
+
+std::string EncodeDestination(const CTxDestination& dest, const CChainParams& params)
+{
+    return std::visit(DestinationEncoder(params), dest);
 }
 
 CTxDestination DecodeDestination(const std::string& str, std::string& error_msg, std::vector<int>* error_locations)
@@ -306,6 +321,12 @@ CTxDestination DecodeDestination(const std::string& str)
 {
     std::string error_msg;
     return DecodeDestination(str, error_msg);
+}
+
+CTxDestination DecodeDestination(const std::string& str, const CChainParams& params)
+{
+    std::string error_msg;
+    return DecodeDestination(str, params, error_msg, nullptr);
 }
 
 bool IsValidDestinationString(const std::string& str, const CChainParams& params)

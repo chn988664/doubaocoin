@@ -960,7 +960,9 @@ BITCOINKERNEL_API void btck_logging_connection_destroy(btck_LoggingConnection* l
  * passed in chain type.
  *
  * @param[in] chain_type Controls the chain parameters type created.
- * @return               An allocated chain parameters opaque struct.
+ * @return               An allocated chain parameters opaque struct for a
+ *                       DouBaoCoin development chain, or null for a disabled
+ *                       or unknown chain type.
  */
 BITCOINKERNEL_API btck_ChainParameters* BITCOINKERNEL_WARN_UNUSED_RESULT btck_chain_parameters_create(
     btck_ChainType chain_type);
@@ -972,7 +974,7 @@ BITCOINKERNEL_API btck_ChainParameters* BITCOINKERNEL_WARN_UNUSED_RESULT btck_ch
  * @param[in] challenge     The signet challenge value. Blocks must satisfy it in
  *                          order to be valid.
  * @param[in] challenge_len The length of the signet challenge.
- * @return                  An allocated chain parameters opaque struct.
+ * @return                  Always null: signet is disabled in DouBaoCoin.
  */
 BITCOINKERNEL_API btck_ChainParameters* BITCOINKERNEL_WARN_UNUSED_RESULT btck_chain_parameters_create_signet(
     const void* challenge, size_t challenge_len);
@@ -1065,7 +1067,8 @@ BITCOINKERNEL_API void btck_context_options_destroy(btck_ContextOptions* context
  * context will assume mainnet chain parameters and won't attempt to call the
  * kernel notification callbacks.
  *
- * @param[in] context_options Nullable, created by @ref btck_context_options_create.
+ * @param[in] context_options Created by @ref btck_context_options_create and
+ *                            containing explicitly selected chain parameters.
  * @return                    The allocated context, or null on error.
  */
 BITCOINKERNEL_API btck_Context* BITCOINKERNEL_WARN_UNUSED_RESULT btck_context_create(

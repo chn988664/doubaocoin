@@ -97,14 +97,6 @@ static int AppInitRawTx(int argc, char* argv[])
         return EXIT_FAILURE;
     }
 
-    // Check for chain settings (Params() calls are only valid after this clause)
-    try {
-        SelectParams(gArgs.GetChainType());
-    } catch (const std::exception& e) {
-        tfm::format(std::cerr, "Error: %s\n", e.what());
-        return EXIT_FAILURE;
-    }
-
     fCreateBlank = gArgs.GetBoolArg("-create", false);
 
     if (argc < 2 || HelpRequested(gArgs) || gArgs.GetBoolArg("-version", false)) {
@@ -131,6 +123,15 @@ static int AppInitRawTx(int argc, char* argv[])
             return EXIT_FAILURE;
         }
         return EXIT_SUCCESS;
+    }
+
+    // Help and version do not require a network, but transaction operations do.
+    try {
+        CheckEnabledChain(gArgs.GetChainType());
+        SelectParams(gArgs.GetChainType());
+    } catch (const std::exception& e) {
+        tfm::format(std::cerr, "Error: %s\n", e.what());
+        return EXIT_FAILURE;
     }
     return CONTINUE_EXECUTION;
 }

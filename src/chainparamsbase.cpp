@@ -10,6 +10,7 @@
 #include <util/chaintype.h>
 
 #include <cassert>
+#include <stdexcept>
 
 void SetupChainParamsBaseOptions(ArgsManager& argsman)
 {
@@ -33,23 +34,31 @@ const CBaseChainParams& BaseParams()
     return *globalChainBaseParams;
 }
 
-/**
- * Port numbers for incoming Tor connections (8334, 18334, 38334, 48334, 18445) have
- * been chosen arbitrarily to keep ranges of used ports tight.
- */
 std::unique_ptr<CBaseChainParams> CreateBaseChainParams(const ChainType chain)
 {
     switch (chain) {
     case ChainType::MAIN:
+#ifdef DOUBAOCOIN_UPSTREAM_TEST_PARAMS
         return std::make_unique<CBaseChainParams>("", 8332);
+#else
+        throw std::runtime_error("DouBaoCoin: mainnet parameters are not approved");
+#endif
     case ChainType::TESTNET:
+#ifdef DOUBAOCOIN_UPSTREAM_TEST_PARAMS
         return std::make_unique<CBaseChainParams>("testnet3", 18332);
+#else
+        throw std::runtime_error("DouBaoCoin: Bitcoin testnet is disabled");
+#endif
     case ChainType::TESTNET4:
-        return std::make_unique<CBaseChainParams>("testnet4", 48332);
+        return std::make_unique<CBaseChainParams>("testnet4", 49324);
     case ChainType::SIGNET:
+#ifdef DOUBAOCOIN_UPSTREAM_TEST_PARAMS
         return std::make_unique<CBaseChainParams>("signet", 38332);
+#else
+        throw std::runtime_error("DouBaoCoin: signet is disabled");
+#endif
     case ChainType::REGTEST:
-        return std::make_unique<CBaseChainParams>("regtest", 18443);
+        return std::make_unique<CBaseChainParams>("regtest", 49326);
     }
     assert(false);
 }
