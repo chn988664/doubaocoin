@@ -1,0 +1,30 @@
+[Unit]
+Description=DouBaoCoin DNS seed (unmodified bitcoin-seeder)
+Wants=network-online.target
+After=network-online.target doubaocoin-dnsseed-firewall.service
+Requires=doubaocoin-dnsseed-firewall.service
+
+[Service]
+Type=simple
+User=doubaocoin-dnsseed
+Group=doubaocoin-dnsseed
+EnvironmentFile=/etc/doubaocoin-dnsseed/seed.env
+WorkingDirectory=/var/lib/doubaocoin-dnsseed
+ExecStart=/opt/doubaocoin-dnsseed/dnsseed -h ${SEED_HOST} -n ${NS_HOST} -m hostmaster.wudoubao.us -a ${PUBLIC_IP} -p 53 -t 8 -d 1 -b 49321 --magic fbc7b2d4 --minheight 1 --knownblock 0000000007340821f32d4424dda9cb6b4f165b09fc10a83bcc1d6431fa1f95e0 -s 64.44.157.133 -s 103.91.219.156
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/doubaocoin-dnsseed
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+MemoryMax=128M
+CPUQuota=25%
+LimitNOFILE=1024
+
+[Install]
+WantedBy=multi-user.target

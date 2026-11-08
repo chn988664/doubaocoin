@@ -8,6 +8,7 @@
 #ifdef DOUBAOCOIN_UPSTREAM_TEST_PARAMS
 #include <chainparamsseeds.h>
 #endif
+#include <doubaocoinseeds.h>
 #include <consensus/amount.h>
 #include <consensus/merkle.h>
 #include <consensus/params.h>
@@ -656,6 +657,12 @@ public:
 
         pchMessageStart = {0xfb, 0xc7, 0xb2, 0xd4};
         nDefaultPort = 49321;
+        vSeeds.emplace_back("seed1.dbcn.wudoubao.us.");
+        vSeeds.emplace_back("seed2.dbcn.wudoubao.us.");
+        // Use Bitcoin Core's native addrman/fixed-seed fallback for a pristine
+        // installation. These are bootstrap candidates, not mandatory peers;
+        // address gossip and normal outbound selection remain upstream code.
+        vFixedSeeds = std::vector<uint8_t>(std::begin(doubaocoin_seed_main), std::end(doubaocoin_seed_main));
         nPruneAfterHeight = 1000;
         m_assumed_blockchain_size = 0;
         m_assumed_chain_state_size = 0;

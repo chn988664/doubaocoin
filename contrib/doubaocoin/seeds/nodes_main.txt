@@ -1,0 +1,3 @@
+# Public DouBaoCoin mainnet P2P nodes, not Bitcoin endpoints.
+64.44.157.133:49321
+103.91.219.156:49321

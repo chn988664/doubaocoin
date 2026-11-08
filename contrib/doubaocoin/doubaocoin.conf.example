@@ -1,0 +1,10 @@
+# Optional desktop profile. Direct startup also discovers peers automatically.
+chain=main
+server=1
+rpcbind=127.0.0.1
+rpcallowip=127.0.0.1
+rpcport=49322
+prune=550
+
+# Native DNS/fixed seeds and address gossip are enabled by default.
+# Only set addnode/connect deliberately for a custom topology.
