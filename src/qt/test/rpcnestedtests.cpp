@@ -46,7 +46,9 @@ void RPCNestedTests::rpcNestedTests()
         tableRPC.appendCommand(c.name, &c);
     }
 
-    TestingSetup test;
+    // Console parsing does not require a mainnet instance. Keep the GUI test
+    // on the isolated development chain and its approved C07 transaction.
+    TestingSetup test{ChainType::REGTEST};
     m_node.setContext(&test.m_node);
 
     if (RPCIsInWarmup(nullptr)) SetRPCWarmupFinished();
@@ -55,7 +57,7 @@ void RPCNestedTests::rpcNestedTests()
     std::string result2;
     std::string filtered;
     RPCConsole::RPCExecuteCommandLine(m_node, result, "getblockchaininfo()[chain]", &filtered); //simple result filtering with path
-    QVERIFY(result=="main");
+    QVERIFY(result=="regtest");
     QVERIFY(filtered == "getblockchaininfo()[chain]");
 
     RPCConsole::RPCExecuteCommandLine(m_node, result, "getblock(getbestblockhash())"); //simple 2 level nesting
@@ -82,7 +84,7 @@ void RPCNestedTests::rpcNestedTests()
     QVERIFY(result == result2);
 
     RPCConsole::RPCExecuteCommandLine(m_node, result, "getblock(getbestblockhash())[tx][0]", &filtered);
-    QVERIFY(result == "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b");
+    QVERIFY(result == "334f8d85d7a7c0b6df26cccde033bc1be9a9ee6f90ac736f2f591039191ded85");
     QVERIFY(filtered == "getblock(getbestblockhash())[tx][0]");
 
     RPCConsole::RPCParseCommandLine(nullptr, result, "createwallet test true", false, &filtered);

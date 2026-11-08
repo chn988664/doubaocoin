@@ -260,6 +260,7 @@ add_executable(bitcoin-qt WIN32
   res/bitcoin-qt-res.rc
   ../init/bitcoin-qt.cpp
 )
+set_target_properties(bitcoin-qt PROPERTIES OUTPUT_NAME "doubaocoin-qt")
 
 add_windows_application_manifest(bitcoin-qt)
 

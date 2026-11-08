@@ -5,6 +5,8 @@
 #include <wallet/wallettool.h>
 
 #include <common/args.h>
+#include <key_io.h>
+#include <outputtype.h>
 #include <util/check.h>
 #include <util/fs.h>
 #include <util/translation.h>
@@ -105,6 +107,10 @@ bool ExecuteWalletToolFunc(const ArgsManager& args, const std::string& command)
         return false;
     }
     const std::string name = args.GetArg("-wallet", "");
+    if (command == "getnewaddress" && name.empty()) {
+        tfm::format(std::cerr, "Wallet name must be provided when reserving an offline address.\n");
+        return false;
+    }
     util::Result<fs::path> path_res = GetWalletPath(name);
     if (!path_res) {
         tfm::format(std::cerr, "%s\n", util::ErrorString(path_res).original);
@@ -124,10 +130,26 @@ bool ExecuteWalletToolFunc(const ArgsManager& args, const std::string& command)
         options.require_format = DatabaseFormat::SQLITE;
 
         const std::shared_ptr<CWallet> wallet_instance = MakeWallet(name, path, options);
-        if (wallet_instance) {
-            WalletShowInfo(wallet_instance.get());
+        // A failed create must not look successful to backup/provisioning scripts.
+        if (!wallet_instance) return false;
+        WalletShowInfo(wallet_instance.get());
+        wallet_instance->Close();
+    } else if (command == "getnewaddress") {
+        DatabaseOptions options;
+        ReadDatabaseArgs(args, options);
+        options.require_existing = true;
+        const auto wallet_instance = MakeWallet(name, path, options);
+        if (!wallet_instance) return false;
+        // Reuse the wallet's normal reservation and persistence path. Never
+        // export a seed or private descriptor to obtain a receiving address.
+        auto destination = wallet_instance->GetNewDestination(OutputType::BECH32, "");
+        if (!destination) {
+            tfm::format(std::cerr, "%s\n", util::ErrorString(destination).original);
             wallet_instance->Close();
+            return false;
         }
+        tfm::format(std::cout, "%s\n", EncodeDestination(*destination));
+        wallet_instance->Close();
     } else if (command == "info") {
         DatabaseOptions options;
         ReadDatabaseArgs(args, options);
@@ -158,7 +180,7 @@ bool ExecuteWalletToolFunc(const ArgsManager& args, const std::string& command)
             tfm::format(std::cerr, "%s\n", error.original);
             return ret;
         }
-        tfm::format(std::cout, "The dumpfile may contain private keys. To ensure the safety of your Bitcoin, do not share the dumpfile.\n");
+        tfm::format(std::cout, "The dumpfile may contain private keys. To ensure the safety of your DBCN, do not share the dumpfile.\n");
         return ret;
     } else if (command == "createfromdump") {
         bilingual_str error;

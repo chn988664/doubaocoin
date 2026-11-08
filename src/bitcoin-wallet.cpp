@@ -44,6 +44,7 @@ static void SetupWalletToolArgs(ArgsManager& argsman)
 
     argsman.AddCommand("info", "Get wallet info");
     argsman.AddCommand("create", "Create a new descriptor wallet file");
+    argsman.AddCommand("getnewaddress", "Reserve and print a new Bech32 receiving address offline (requires -wallet)");
     argsman.AddCommand("dump", "Print out all of the wallet key-value records", {"-dumpfile"});
     argsman.AddCommand("createfromdump", "Create new wallet file from dumped records", {"-dumpfile"});
 }

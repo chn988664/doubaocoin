@@ -321,6 +321,7 @@ if(BUILD_BITCOIN_BIN)
     bitcoin.cpp
     bitcoin-res.rc
   )
+  set_target_properties(bitcoin PROPERTIES OUTPUT_NAME "doubaocoin")
   add_windows_application_manifest(bitcoin)
   target_link_libraries(bitcoin core_interface bitcoin_common bitcoin_util)
   install_binary_component(bitcoin HAS_MANPAGE)
