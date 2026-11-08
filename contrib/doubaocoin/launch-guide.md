@@ -1,6 +1,6 @@
 # DouBaoCoin 发布与连接说明
 
-本文件是发布准备材料，不是正式启动公告。正式启动时间、公开程序包及启动授权由项目所有者另行确认。在公开启动时刻前，不挖掘主网后继区块。
+本说明对应 32.1.1 发布程序包。运行钱包或节点不会自动开始挖矿；正式网络启动公告由项目所有者发布。
 
 ## 正式网络
 
@@ -10,14 +10,14 @@ SHA-256d，目标间隔 600 秒，每 2016 区块调整，目标时间 1209600 �
 
 初始 nBits 为 `0x1d00ffff`，展开目标为 `00000000ffff0000000000000000000000000000000000000000000000000000`；powLimit 为 `00000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffff`。首个后继区块继承该难度。600 秒是调整目标，不是单台 CPU 的实际承诺；按 T007-R1 单线程约 1055902 H/s，平均约 68 分钟一个区块，随机等待可能显著更长。参数不随 Mac 算力修改。
 
-链名 `main`，网络 Magic `fbc7b2d4`，P2P 49321，RPC 49322。初始连接中心：
+链名 `main`，网络 Magic `fbc7b2d4`，P2P 49321，RPC 49322。新安装直接启动即可使用 Bitcoin Core 原生节点发现，无需手工指定节点。DNS 种子：
 
-```ini
-addnode=64.44.157.133:49321
-addnode=103.91.219.156:49321
+```text
+seed1.dbcn.wudoubao.us
+seed2.dbcn.wudoubao.us
 ```
 
-上述端点在受控启动批准后才开放，初期无 DNS Seeds。服务器之间直接连接，不以 Mac 为中转。RPC 仅绑定本机回环，不向公网开放。
+DNS 不可用时使用内置备用种子；之后通过原生地址交换和地址管理器选择对端，种子并非指定的永久连接中心。服务器之间直接连接，不以 Mac 为中转。RPC 仅绑定本机回环，不向公网开放。旧配置中的 `connect=` 会覆盖自动选择，`dnsseed=0`、`fixedseeds=0` 等显式设置也会被保留；升级时应自行核对这些早期私网设置，发布包不会覆盖用户配置。部署细节见 [原生节点发现](bootstrap.md)。
 
 地址 P2PKH `0x1c`、P2SH `0x3f`、WIF `0x9f`、Bech32/Bech32m `dbcn`、扩展公钥 `0x02db0001`、扩展私钥 `0x02db0002`。两种旧式地址与部分其他币种存在版本冲突，所有者已接受；此风险尚未消除。默认使用 `dbcn1` Bech32 地址，付款 URI 为 `doubaocoin:`，不接受 `bitcoin:` URI。
 
@@ -55,21 +55,18 @@ PY
 
 详见 [钱包备份与恢复](wallet-backup.md)。私钥、私有描述符、钱包文件、密码和 RPC Cookie 都不能提交到源码仓库。使用矿工前，钱包所有者必须亲自备份并确认公开收款地址。
 
-Windows 10（1809 或更新）/11 Intel/AMD x86-64 包中的 `打开豆包币钱包.cmd` 启动图形钱包，数据目录默认 `%APPDATA%\DouBaoCoin`。系统范围依据 [Qt 6.8 官方平台说明](https://doc.qt.io/qt-6.8/windows.html)，不代表本轮进行了原生 Windows 实机验收。首次创建钱包后，通过菜单备份钱包；重要备份保存在独立且受保护的介质上。启动脚本仅启用本机 RPC 和到两中心的出站 P2P，禁用入站监听，采用 550 MiB 修剪目标，不修改 Bitcoin 的目录。无需为了运行钱包关闭系统安全保护。
+Windows 10（1809 或更新）/11 Intel/AMD x86-64 包中的 `打开豆包币钱包.cmd` 启动图形钱包，数据目录默认 `%APPDATA%\DouBaoCoin`。系统范围依据 [Qt 6.8 官方平台说明](https://doc.qt.io/qt-6.8/windows.html)，不代表本轮进行了原生 Windows 实机验收。首次创建钱包后，通过菜单备份钱包；重要备份保存在独立且受保护的介质上。启动脚本仅启用本机 RPC，采用 550 MiB 修剪目标；P2P 连接与监听沿用原生默认行为，不修改 Bitcoin 的目录。直接运行 `bin\doubaocoin-qt.exe` 也使用相同的内置种子。无需为了运行钱包关闭系统安全保护。
 
 ## Mac 本地挖矿
 
-先由本地完整验证节点同步，再由矿工访问本机 RPC Cookie。远程 VPS 不保存本地钱包或私钥。Mac 可通过现有 SSH 安全通道分别接入两个中心，无需开放远程 RPC；每个通道独立，服务器网络不依赖这些通道。
+先由本地完整验证节点同步，再由矿工访问本机 RPC Cookie。远程 VPS 不保存本地钱包或私钥。正常公网连接无需 SSH 隧道或手工指定中心：
 
 ```sh
-# 仅在正式启动获准后，分别在两个终端保持运行：
-ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=20 -o ServerAliveCountMax=3 \
-  -L 127.0.0.1:49421:127.0.0.1:49321 green
-ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=20 -o ServerAliveCountMax=3 \
-  -L 127.0.0.1:49422:127.0.0.1:49321 cube
+/path/to/bin/doubaocoind -server=1 -rpcbind=127.0.0.1 \
+  -rpcallowip=127.0.0.1 -rpcport=49322 -prune=550
 ```
 
-本地节点保持 `listen=0`，通过 `connect=127.0.0.1:49421` 和 `connect=127.0.0.1:49422` 连接。RPC `rpcbind=127.0.0.1`、`rpcallowip=127.0.0.1`、`rpcport=49322`。节点、配置、钱包和 Cookie 仅供本机用户访问。
+本地节点自动发现并选择 P2P 对端。RPC `rpcbind=127.0.0.1`、`rpcallowip=127.0.0.1`、`rpcport=49322`。节点数据、配置、钱包和 Cookie 仅供本机用户访问。
 
 创世之后若超过 24 小时没有新区块，默认 IBD 年龄门槛会阻止 getblocktemplate。经本轮合理启动配置指示，准备仅在 Mac 挖矿节点临时采用 `maxtipage=604800`；它不改变共识、难度或验证。此准备范围截止 2026-11-15 06:29:17 UTC，超期须重新审批。首个区块被网络接受后，停止矿工、删除该设置并重启本地节点；五台服务器始终保留默认 86400。其他参与者使用同类启动设置时也须知悉该就绪判断的放宽，不可关闭 PoW 或伪造链尖。
 
@@ -82,7 +79,7 @@ python3 /path/to/doubaocoin-miner \
   --blocks 1
 ```
 
-矿工需要 Python 3，单线程执行实际 SHA-256d。Ctrl-C 可停止，不设置开机挖矿。遇到临时 RPC 故障会重试；节点重启后重新核对创世和地址，错误网络身份会退出。休眠和网络断开会中断有效挖矿；恢复后检查 SSH 通道、节点对端和链尖，再手动继续。首块提交成功后，核对五台服务器的高度、Hash、难度、Coinbase 收款脚本和 50 DBCN 奖励，不能只看矿工输出。
+矿工需要 Python 3，单线程执行实际 SHA-256d。Ctrl-C 可停止，不设置开机挖矿。遇到临时 RPC 故障会重试；节点重启后重新核对创世和地址，错误网络身份会退出。休眠和网络断开会中断有效挖矿；恢复后检查节点对端和链尖，再手动继续。首块提交成功后，核对五台服务器的高度、Hash、难度、Coinbase 收款脚本和 50 DBCN 奖励，不能只看矿工输出。
 
 ## 构建与发布限制
 
