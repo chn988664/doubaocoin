@@ -184,6 +184,11 @@ static constexpr bool DEFAULT_STOPAFTERBLOCKIMPORT{false};
 
 static constexpr int MIN_CORE_FDS = MIN_LEVELDB_FDS + NUM_FDS_MESSAGE_CAPTURE;
 
+// DouBaoCoin reserves P2P+1 for RPC on each chain. Keep those established
+// ports and use a separate local Tor target (mainnet 49329, testnet4 49331,
+// regtest 49333). The native bind and Tor service logic stays unchanged.
+static constexpr uint16_t DEFAULT_ONION_PORT_OFFSET{8};
+
 /**
  * The PID file facilities.
  */
@@ -558,7 +563,7 @@ void SetupServerArgs(ArgsManager& argsman, bool can_listen_ipc)
                 #endif
                 ), ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
     argsman.AddArg("-bantime=<n>", strprintf("Default duration (in seconds) of manually configured bans (default: %u)", DEFAULT_MISBEHAVING_BANTIME), ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
-    argsman.AddArg("-bind=<addr>[:<port>][=onion]", strprintf("Bind to an address and listen on it. Append =onion for Tor (onion ports: testnet4 %u, regtest %u)", testnet4ChainParams->GetDefaultPort() + 1, regtestChainParams->GetDefaultPort() + 1), ArgsManager::ALLOW_ANY | ArgsManager::NETWORK_ONLY, OptionsCategory::CONNECTION);
+    argsman.AddArg("-bind=<addr>[:<port>][=onion]", strprintf("Bind to an address and listen on it. Append =onion for Tor (onion ports: testnet4 %u, regtest %u)", testnet4ChainParams->GetDefaultPort() + DEFAULT_ONION_PORT_OFFSET, regtestChainParams->GetDefaultPort() + DEFAULT_ONION_PORT_OFFSET), ArgsManager::ALLOW_ANY | ArgsManager::NETWORK_ONLY, OptionsCategory::CONNECTION);
     argsman.AddArg("-cjdnsreachable", "If set, then this host is configured for CJDNS (connecting to fc00::/8 addresses would lead us to the CJDNS network, see doc/cjdns.md) (default: 0)", ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
     argsman.AddArg("-connect=<ip>", "Connect only to the specified node; -noconnect disables automatic connections (the rules for this peer are the same as for -addnode). This option can be specified multiple times to connect to multiple nodes.", ArgsManager::ALLOW_ANY | ArgsManager::NETWORK_ONLY, OptionsCategory::CONNECTION);
     argsman.AddArg("-discover", "Discover own IP addresses (default: 1 when listening and no -externalip or -proxy)", ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
@@ -590,7 +595,7 @@ void SetupServerArgs(ArgsManager& argsman, bool can_listen_ipc)
     argsman.AddArg("-peerbloomfilters", strprintf("Support filtering of blocks and transaction with bloom filters (default: %u)", DEFAULT_PEERBLOOMFILTERS), ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
     argsman.AddArg("-peerblockfilters", strprintf("Serve compact block filters to peers per BIP 157 (default: %u)", DEFAULT_PEERBLOCKFILTERS), ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
     argsman.AddArg("-txreconciliation", strprintf("Enable transaction reconciliations per BIP 330 (default: %d)", DEFAULT_TXRECONCILIATION_ENABLE), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::CONNECTION);
-    argsman.AddArg("-port=<port>", strprintf("Listen for connections on <port> (testnet4: %u, regtest: %u). The default onion port is this port plus one.", testnet4ChainParams->GetDefaultPort(), regtestChainParams->GetDefaultPort()), ArgsManager::ALLOW_ANY | ArgsManager::NETWORK_ONLY, OptionsCategory::CONNECTION);
+    argsman.AddArg("-port=<port>", strprintf("Listen for connections on <port> (testnet4: %u, regtest: %u). The default onion port is this port plus %u.", testnet4ChainParams->GetDefaultPort(), regtestChainParams->GetDefaultPort(), DEFAULT_ONION_PORT_OFFSET), ArgsManager::ALLOW_ANY | ArgsManager::NETWORK_ONLY, OptionsCategory::CONNECTION);
     const std::string proxy_doc_for_value =
 #ifdef HAVE_SOCKADDR_UN
         "<ip>[:<port>]|unix:<path>";
@@ -2206,7 +2211,7 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
     const uint16_t default_bind_port =
         static_cast<uint16_t>(args.GetIntArg("-port", Params().GetDefaultPort()));
 
-    const uint16_t default_bind_port_onion = default_bind_port + 1;
+    const uint16_t default_bind_port_onion = default_bind_port + DEFAULT_ONION_PORT_OFFSET;
 
     const auto BadPortWarning = [](const char* prefix, uint16_t port) {
         return strprintf(_("%s request to listen on port %u. This port is considered \"bad\" and "

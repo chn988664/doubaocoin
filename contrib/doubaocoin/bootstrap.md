@@ -9,6 +9,13 @@ Fixed-seed input: `contrib/doubaocoin/seeds/nodes_main.txt`; the serialized
 array in `src/doubaocoinseeds.h` is produced by the unmodified Bitcoin Core
 `contrib/seeds/generate-seeds.py` `process_nodes` function.
 
+Listening ports are distinct: mainnet P2P 49321, RPC 49322 and local Tor
+target 49329. DouBaoCoin uses a Tor port offset of eight because P2P+1 is
+already assigned to RPC; testnet4 uses 49323/49324/49331 and regtest uses
+49325/49326/49333. Explicit native `-bind=...=onion` overrides still apply.
+Do not disable listening or move RPC during release tests: the real default
+GUI, launcher and daemon paths must bind successfully together with RPC.
+
 A pristine installation can start the node or Windows GUI directly. No old
 `peers.dat`, manual `addnode`, copied example configuration or launcher-specific
 bootstrap arguments are required. DNS failures fall back to fixed seeds through
