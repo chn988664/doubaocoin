@@ -96,6 +96,8 @@ public:
     bool DefaultConsistencyChecks() const { return fDefaultConsistencyChecks; }
     /** If this chain is exclusively used for testing */
     bool IsTestChain() const { return m_chain_type != ChainType::MAIN; }
+    /** BIP44 coin type for newly created descriptor wallets; not a consensus parameter. */
+    uint32_t WalletCoinType() const { return m_wallet_coin_type.value_or(IsTestChain() ? 1U : 0U); }
     /** If this chain allows time to be mocked */
     bool IsMockableChain() const { return m_is_mockable_chain; }
     uint64_t PruneAfterHeight() const { return nPruneAfterHeight; }
@@ -191,6 +193,7 @@ protected:
     std::vector<unsigned char> base58Prefixes[MAX_BASE58_TYPES];
     std::string bech32_hrp;
     ChainType m_chain_type;
+    std::optional<uint32_t> m_wallet_coin_type;
     CBlock genesis;
     std::vector<uint8_t> vFixedSeeds;
     bool fDefaultConsistencyChecks;

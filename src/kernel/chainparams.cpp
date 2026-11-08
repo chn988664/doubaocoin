@@ -79,9 +79,9 @@ static CBlock CreateGenesisBlock(uint32_t nTime, uint32_t nNonce, uint32_t nBits
 }
 #endif
 
-// This genesis is exclusively for isolated development networks. Its time,
-// difficulty and identity must not be treated as mainnet genesis parameters.
-static CBlock CreateDouBaoTestGenesis(uint32_t time, uint32_t nonce)
+// C07 uses the same transaction structure on all DouBaoCoin chains. Each
+// network supplies its own explicit header parameters and genesis identity.
+static CBlock CreateDouBaoGenesis(uint32_t time, uint32_t nonce, uint32_t bits)
 {
     constexpr char timestamp[] = "DouBaoCoin Genesis 2026";
     CMutableTransaction tx;
@@ -94,7 +94,7 @@ static CBlock CreateDouBaoTestGenesis(uint32_t time, uint32_t nonce)
     CBlock block;
     block.nVersion = 1;
     block.nTime = time;
-    block.nBits = 0x207fffff;
+    block.nBits = bits;
     block.nNonce = nonce;
     block.vtx.push_back(MakeTransactionRef(std::move(tx)));
     block.hashPrevBlock.SetNull();
@@ -616,19 +616,18 @@ public:
  */
 #endif // DOUBAOCOIN_UPSTREAM_TEST_PARAMS
 
-// C02 is approved; the public factory still refuses mainnet until the owner
-// approves its genesis and launch. Never infer those inputs from regtest.
+// The owner approved C02 and this exact C07 genesis. Launch remains a separate
+// operational decision; constructing parameters does not start a node.
 #ifndef DOUBAOCOIN_UPSTREAM_TEST_PARAMS
-struct DouBaoMainnetInputs {
-    CBlock genesis_block;
-};
-
 class CDouBaoMainParams final : public CChainParams
 {
 public:
-    explicit CDouBaoMainParams(const DouBaoMainnetInputs& inputs)
+    CDouBaoMainParams()
     {
         m_chain_type = ChainType::MAIN;
+        // Owner-approved private allocation; SLIP-0044 does not yet register it.
+        // Existing descriptors retain their original path if registration changes.
+        m_wallet_coin_type = 1145193294;
         consensus.signet_blocks = false;
         consensus.signet_challenge.clear();
         consensus.nSubsidyHalvingInterval = 210000;
@@ -669,17 +668,18 @@ public:
         fDefaultConsistencyChecks = false;
         m_is_mockable_chain = false;
 
-        // The root is the independently verified C07 transaction hash, not a
-        // genesis block hash. It cannot identify a mainnet without its header.
-        genesis = inputs.genesis_block;
+        // These values identify the independently verified, owner-approved
+        // genesis. Reject any serialization or consensus drift even in release builds.
+        genesis = CreateDouBaoGenesis(1794119357, 3880018009U, 0x1d00ffff);
         const uint256 c07_root{"334f8d85d7a7c0b6df26cccde033bc1be9a9ee6f90ac736f2f591039191ded85"};
+        const uint256 approved_genesis_hash{"0000000007340821f32d4424dda9cb6b4f165b09fc10a83bcc1d6431fa1f95e0"};
         // C02 fixes the genesis target; accepting another valid target here
         // would silently create a different consensus network.
         constexpr uint32_t approved_genesis_bits{0x1d00ffff};
         if (genesis.nVersion != 1 || genesis.nBits != approved_genesis_bits ||
             !genesis.hashPrevBlock.IsNull() || genesis.vtx.size() != 1 || !genesis.vtx[0] ||
             genesis.vtx[0]->HasWitness() || genesis.hashMerkleRoot != c07_root ||
-            BlockMerkleRoot(genesis) != c07_root ||
+            BlockMerkleRoot(genesis) != c07_root || genesis.GetHash() != approved_genesis_hash ||
             !CheckProofOfWork(genesis.GetHash(), genesis.nBits, consensus)) {
             throw std::runtime_error("DouBaoCoin: invalid mainnet genesis or consensus inputs");
         }
@@ -741,7 +741,7 @@ public:
 
         ApplyDeploymentOptions(opts.dep_opts);
 
-        genesis = CreateDouBaoTestGenesis(1794000000, 4);
+        genesis = CreateDouBaoGenesis(1794000000, 4, 0x207fffff);
         consensus.hashGenesisBlock = genesis.GetHash();
         assert(consensus.hashGenesisBlock == uint256{"373225875e86f5100edfdc32cf34f26e030f400ea17c6d77bdff27f4c73a4aaf"});
         assert(genesis.hashMerkleRoot == uint256{"334f8d85d7a7c0b6df26cccde033bc1be9a9ee6f90ac736f2f591039191ded85"});
@@ -798,7 +798,7 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         pchMessageStart[2] = 0xb3;
         nDefaultPort = 49323;
-        genesis = CreateDouBaoTestGenesis(1794000001, 1);
+        genesis = CreateDouBaoGenesis(1794000001, 1, 0x207fffff);
         consensus.hashGenesisBlock = genesis.GetHash();
         assert(consensus.hashGenesisBlock == uint256{"357eb1881cc459600c6eccff374103991d36c94c2e7afbcc77ccf9de54f84fe4"});
         m_assumeutxo_data.clear();
@@ -832,7 +832,7 @@ std::unique_ptr<const CChainParams> CChainParams::Main(const MainNetOptions& opt
     return std::make_unique<const CMainParams>(options);
 #else
     (void)options;
-    throw std::runtime_error("DouBaoCoin: mainnet genesis and launch are not approved");
+    return std::make_unique<const CDouBaoMainParams>();
 #endif
 }
 

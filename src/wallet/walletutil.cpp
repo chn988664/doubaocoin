@@ -67,12 +67,9 @@ WalletDescriptor GenerateWalletDescriptor(const CExtPubKey& master_key, const Ou
     } // no default case, so the compiler can warn about missing cases
     assert(!desc_prefix.empty());
 
-    // Mainnet derives at 0', testnet and regtest derive at 1'
-    if (Params().IsTestChain()) {
-        desc_prefix += "/1h";
-    } else {
-        desc_prefix += "/0h";
-    }
+    // Persisted descriptors carry their own derivation path; a later coin-type
+    // assignment must not silently rewrite existing wallets.
+    desc_prefix += "/" + std::to_string(Params().WalletCoinType()) + "h";
 
     std::string internal_path = internal ? "/1" : "/0";
     std::string desc_str = desc_prefix + "/0h" + internal_path + desc_suffix;

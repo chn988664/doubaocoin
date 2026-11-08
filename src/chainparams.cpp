@@ -164,10 +164,10 @@ std::unique_ptr<const CChainParams> CreateChainParams(const ArgsManager& args, c
 
 void CheckEnabledChain(const ChainType chain)
 {
-    // Only isolated development chains are enabled until mainnet genesis and
-    // launch are separately approved.
-    if (chain != ChainType::REGTEST && chain != ChainType::TESTNET4) {
-        throw std::runtime_error("DouBaoCoin: this network is disabled; mainnet genesis and launch are not approved. Use -regtest or -testnet4 for isolated development only.");
+    // Mainnet parameters are finalized; operating the network still requires
+    // separate owner authorization. Bitcoin's other networks remain disabled.
+    if (chain != ChainType::MAIN && chain != ChainType::REGTEST && chain != ChainType::TESTNET4) {
+        throw std::runtime_error("DouBaoCoin: this network is disabled; use main, regtest or testnet4.");
     }
 }
 

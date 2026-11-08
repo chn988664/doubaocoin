@@ -5,8 +5,12 @@
 import argparse
 import hashlib
 import json
+import os
 import struct
 import sys
+import tempfile
+import time
+from pathlib import Path
 
 
 def double_sha(data):
@@ -23,7 +27,7 @@ def compact_target(bits):
     return target
 
 
-def candidate(message, block_time, bits, first, last):
+def candidate(message, block_time, bits, first, last, progress_seconds=0):
     msg = message.encode('utf-8')
     if not 1 <= len(msg) <= 75:
         raise ValueError('message must be 1–75 UTF-8 bytes')
@@ -33,6 +37,7 @@ def candidate(message, block_time, bits, first, last):
     root = double_sha(tx)
     prefix = struct.pack('<I', 1) + bytes(32) + root + struct.pack('<II', block_time, bits)
     target = compact_target(bits)
+    started = last_progress = time.monotonic()
     for nonce in range(first, last + 1):
         header = prefix + struct.pack('<I', nonce)
         digest = double_sha(header)
@@ -40,7 +45,29 @@ def candidate(message, block_time, bits, first, last):
             return {'time': block_time, 'bits': f'{bits:08x}', 'target': f'{target:064x}', 'nonce': nonce,
                     'transaction': tx.hex(), 'merkle_root': root[::-1].hex(), 'header': header.hex(),
                     'block_hash': digest[::-1].hex(), 'block': (header + b'\x01' + tx).hex()}
+        # Checking the clock in batches keeps the actual hashing loop simple.
+        if progress_seconds and (nonce - first + 1) % 1048576 == 0:
+            now = time.monotonic()
+            if now - last_progress >= progress_seconds:
+                print(f'last_nonce={nonce} hashes={nonce-first+1} elapsed={now-started:.2f}s',
+                      file=sys.stderr, flush=True)
+                last_progress = now
     return None
+
+
+def save_result(path, document):
+    path = Path(path)
+    # Publish without replacing any previous result, even if another process
+    # creates the destination while this search is running.
+    fd, temporary = tempfile.mkstemp(prefix=f'.{path.name}.', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as output:
+            output.write(document + '\n')
+            output.flush()
+            os.fsync(output.fileno())
+        os.link(temporary, path)
+    finally:
+        os.unlink(temporary)
 
 
 def main():
@@ -50,17 +77,36 @@ def main():
     p.add_argument('--bits', required=True, type=lambda s: int(s, 16), help='compact target in hexadecimal')
     p.add_argument('--start-nonce', required=True, type=int)
     p.add_argument('--end-nonce', required=True, type=int)
+    p.add_argument('--output', help='save a successful result without overwriting an existing file')
+    p.add_argument('--progress-seconds', type=float, default=30, help='minimum seconds between progress reports; 0 disables')
     a = p.parse_args()
     if not 0 <= a.time <= 0xffffffff or not 0 <= a.bits <= 0xffffffff or not 0 <= a.start_nonce <= a.end_nonce <= 0xffffffff:
         p.error('time, bits and nonce range must fit uint32')
+    if not 0 <= a.progress_seconds <= 3600:
+        p.error('progress interval must be between 0 and 3600 seconds')
+    if a.output and os.path.lexists(a.output):
+        p.error('output already exists; refusing to overwrite')
+    if a.output and not Path(a.output).parent.is_dir():
+        p.error('output directory does not exist')
+    started = time.monotonic()
     try:
-        result = candidate(a.message, a.time, a.bits, a.start_nonce, a.end_nonce)
+        result = candidate(a.message, a.time, a.bits, a.start_nonce, a.end_nonce, a.progress_seconds)
     except ValueError as exc:
         p.error(str(exc))
     if result is None:
         print('no valid nonce in the specified range', file=sys.stderr)
         return 1
-    print(json.dumps(result, indent=2))
+    result['search'] = {'start_nonce': a.start_nonce, 'end_nonce': a.end_nonce,
+                        'attempts': result['nonce'] - a.start_nonce + 1,
+                        'elapsed_seconds': round(time.monotonic() - started, 6)}
+    document = json.dumps(result, indent=2)
+    if a.output:
+        try:
+            save_result(a.output, document)
+        except OSError as exc:
+            print(f'cannot save result: {exc}', file=sys.stderr)
+            return 1
+    print(document)
     return 0
 
 

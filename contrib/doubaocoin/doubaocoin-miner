@@ -16,6 +16,11 @@ import urllib.request
 from pathlib import Path
 
 STOP = False
+APPROVED_MAINNET_GENESIS = '0000000007340821f32d4424dda9cb6b4f165b09fc10a83bcc1d6431fa1f95e0'
+
+
+class ChainIdentityError(Exception):
+    """Do not retry an explicitly wrong chain or payout address."""
 
 
 def stop(_signum, _frame):
@@ -44,6 +49,8 @@ def push(data):
 
 
 def script_number(n):
+    if not isinstance(n, int) or isinstance(n, bool) or n < 0:
+        raise ValueError('script number must be a non-negative integer')
     if n == 0:
         return b''
     value = bytearray()
@@ -104,7 +111,12 @@ def make_work(template, script, extra):
     unknown_rules = [rule for rule in template['rules'] if rule.startswith('!') and rule != '!segwit']
     if unknown_rules:
         raise ValueError('unsupported mandatory template rules: ' + ', '.join(unknown_rules))
+    block_version = template['version']
+    if not isinstance(block_version, int) or isinstance(block_version, bool) or not -(1 << 31) <= block_version <= 0xffffffff:
+        raise ValueError('invalid template version')
     height = template['height']
+    if not isinstance(height, int) or isinstance(height, bool) or not 1 <= height <= 0x7fffffff:
+        raise ValueError('invalid template height')
     height_prefix = bytes([0x50 + height]) if 1 <= height <= 16 else push(script_number(height))
     sig = height_prefix + b''.join(push(bytes.fromhex(v)) for v in template['coinbaseaux'].values()) + push(struct.pack('<Q', extra))
     if not 2 <= len(sig) <= 100:
@@ -122,43 +134,54 @@ def make_work(template, script, extra):
     coinbase = (version + b'\x00\x01' + b'\x01' + txin + outputs + b'\x01\x20' + bytes(32) + locktime) if commitment else stripped
     txs = template['transactions']
     root = merkle([sha256d(stripped)] + [bytes.fromhex(tx['txid'])[::-1] for tx in txs])
-    header = (struct.pack('<I', template['version']) + bytes.fromhex(template['previousblockhash'])[::-1] + root +
+    # RPC can represent a valid 32-bit header version as a signed integer.
+    header = (struct.pack('<I', block_version & 0xffffffff) + bytes.fromhex(template['previousblockhash'])[::-1] + root +
               struct.pack('<III', template['curtime'], bits, 0))
     return header, target, coinbase, txs
 
 
-def mine(args):
-    cookie = Path(args.cookie).expanduser()
+def validate_node(args, cookie):
     info = rpc(args.port, cookie, 'getblockchaininfo')
     # Chain labels alone are shared with Bitcoin and cannot identify the network.
     if info['chain'] == 'regtest':
         if args.mainnet_genesis is not None:
-            raise RuntimeError('mainnet genesis cannot be specified for regtest')
+            raise ChainIdentityError('mainnet genesis cannot be specified for regtest')
         expected_genesis = '373225875e86f5100edfdc32cf34f26e030f400ea17c6d77bdff27f4c73a4aaf'
     elif info['chain'] == 'main':
-        # There is intentionally no default: only an explicit, approved identity
-        # may authorize mining after the node itself is approved for mainnet.
+        # There is intentionally no default: an operator must explicitly name
+        # the fixed, approved identity after separate authorization to mine.
         expected_genesis = args.mainnet_genesis
         if expected_genesis is None or len(expected_genesis) != 64:
-            raise RuntimeError('mainnet mining requires an explicitly approved genesis hash')
+            raise ChainIdentityError('mainnet mining requires an explicitly approved genesis hash')
         try:
             if len(bytes.fromhex(expected_genesis)) != 32 or int(expected_genesis, 16) == 0:
                 raise ValueError
         except ValueError:
-            raise RuntimeError('invalid approved genesis hash') from None
+            raise ChainIdentityError('invalid approved genesis hash') from None
         expected_genesis = expected_genesis.lower()
+        if expected_genesis != APPROVED_MAINNET_GENESIS:
+            raise ChainIdentityError('mainnet genesis does not match the approved DouBaoCoin identity')
     else:
-        raise RuntimeError('unsupported chain')
+        raise ChainIdentityError('unsupported chain')
     if rpc(args.port, cookie, 'getblockhash', [0]) != expected_genesis:
-        raise RuntimeError('node genesis does not match the specified DouBaoCoin chain')
+        raise ChainIdentityError('node genesis does not match the specified DouBaoCoin chain')
     address = rpc(args.port, cookie, 'validateaddress', [args.address])
     if not address.get('isvalid'):
-        raise RuntimeError('invalid address for this chain')
-    script = bytes.fromhex(address['scriptPubKey'])
+        raise ChainIdentityError('invalid address for this chain')
+    return bytes.fromhex(address['scriptPubKey'])
+
+
+def mine(args):
+    cookie = Path(args.cookie).expanduser()
+    script = None
     extra = int.from_bytes(os.urandom(8), 'little')
     accepted = 0
     while not STOP and (args.blocks == 0 or accepted < args.blocks):
         try:
+            # An RPC endpoint can change when a node restarts. Recheck its
+            # genesis and payout address after every error before mining again.
+            if script is None:
+                script = validate_node(args, cookie)
             template = rpc(args.port, cookie, 'getblocktemplate', [{'rules': ['segwit']}])
             header, target, coinbase, txs = make_work(template, script, extra)
             extra = (extra + 1) & 0xffffffffffffffff
@@ -190,7 +213,8 @@ def mine(args):
                 if nonce % 4096 == 0 and time.monotonic() - started >= args.refresh:
                     print(f'work refreshed hashes={nonce} elapsed={time.monotonic()-started:.2f}s', flush=True)
                     break
-        except (OSError, ValueError, RuntimeError, KeyError, urllib.error.URLError) as exc:
+        except (OSError, ValueError, TypeError, OverflowError, struct.error, RuntimeError, KeyError, urllib.error.URLError) as exc:
+            script = None
             print(f'miner error: {exc}; retrying', file=sys.stderr, flush=True)
             for _ in range(10):
                 if STOP:
@@ -213,7 +237,7 @@ def main():
     signal.signal(signal.SIGTERM, stop)
     try:
         mine(args)
-    except (OSError, ValueError, RuntimeError, KeyError, urllib.error.URLError) as exc:
+    except (ChainIdentityError, OSError, ValueError, RuntimeError, KeyError, urllib.error.URLError) as exc:
         print(f'miner error: {exc}', file=sys.stderr)
         return 1
     return 0

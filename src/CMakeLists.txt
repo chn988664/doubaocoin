@@ -158,6 +158,18 @@ target_link_libraries(bitcoin_common
 
 include(InstallBinaryComponent)
 
+# Offline verifier: it validates serialized input only and never starts a node.
+add_executable(doubaocoin-verify-genesis
+  ../contrib/doubaocoin/verify-genesis.cpp
+)
+target_link_libraries(doubaocoin-verify-genesis
+  core_interface
+  bitcoin_common
+  bitcoin_util
+  univalue
+)
+install_binary_component(doubaocoin-verify-genesis)
+
 if(ENABLE_WALLET)
   add_subdirectory(wallet)
 

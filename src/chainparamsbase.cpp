@@ -41,8 +41,8 @@ std::unique_ptr<CBaseChainParams> CreateBaseChainParams(const ChainType chain)
 #ifdef DOUBAOCOIN_UPSTREAM_TEST_PARAMS
         return std::make_unique<CBaseChainParams>("", 8332);
 #else
-        // The base port is safe to describe, but all mainnet entry points must
-        // still reject use until the full chain parameters are approved.
+        // Mainnet parameters are finalized; actual launch remains a separate
+        // owner decision and does not follow from selecting this port.
         return std::make_unique<CBaseChainParams>("", 49322);
 #endif
     case ChainType::TESTNET:
