@@ -4,7 +4,8 @@ server=1
 rpcbind=127.0.0.1
 rpcallowip=127.0.0.1
 rpcport=49322
-prune=550
+# Choose pruning in the wallet's storage settings; do not combine it with txindex.
+# No storage policy is forced by the Windows launcher.
 
 # Native DNS/fixed seeds and address gossip are enabled by default.
 # Only set addnode/connect deliberately for a custom topology.

@@ -48,6 +48,8 @@ public:
     [[nodiscard]] bool createOptionsModel(bool resetSettings);
     /// Initialize prune setting
     void InitPruneSetting(int64_t prune_MiB);
+    /// Resolve incompatible storage settings with consent before node initialization.
+    bool resolvePruneConflict();
     /// Create main window
     void createWindow(const NetworkStyle *networkStyle);
     /// Create splash screen

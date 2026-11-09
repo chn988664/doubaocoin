@@ -262,6 +262,58 @@ Signing is only possible with addresses of the type 'legacy'.</source>
 <context>
     <name>BitcoinApplication</name>
     <message>
+        <source>Keeping pruned data will not automatically delete more blocks. Synchronization will use more disk space; you can enable a storage limit in Options after startup.</source>
+        <translation>继续使用现有修剪数据时，不会自动删除更多区块，后续同步会增加磁盘占用；启动后可在“选项”中开启存储上限。</translation>
+    </message>
+    <message>
+        <source>Old block data has already been pruned. Continuing without pruning requires rebuilding and downloading the blockchain.</source>
+        <translation>此目录中的旧区块已经修剪。切换为完整保存需要重建并重新下载区块链；选择保留修剪可继续使用现有数据。</translation>
+    </message>
+    <message>
+        <source>Storage settings conflict</source>
+        <translation>存储设置冲突</translation>
+    </message>
+    <message>
+        <source>Block pruning and full transaction indexes cannot be enabled together.</source>
+        <translation>区块修剪与完整交易索引不能同时启用。</translation>
+    </message>
+    <message>
+        <source>Keep all blocks: retain all blocks and use more disk space. If blocks were already pruned, a separate confirmation to rebuild and download the blockchain will be required.
+
+Keep pruning: save disk space by deleting old block data; pause full transaction indexes without deleting the index files. Wallet transactions do not require these indexes.
+
+Wallets and existing indexes will not be deleted by this choice.</source>
+        <translation>保存完整区块：保存全部区块，磁盘占用更大。如果以前已修剪区块，应用将另行要求确认重建并重新下载区块链。
+
+保留修剪：通过删除旧区块数据节省空间，并暂停完整交易索引，不删除已有索引文件。钱包自身的交易不依赖这些索引。
+
+本次选择不会删除钱包或已有索引。</translation>
+    </message>
+    <message>
+        <source>Your choice will be saved only after successful startup. Configuration files stay unchanged. Explicit startup arguments can cause this question to appear again.</source>
+        <translation>选择仅在成功启动后保存，配置文件保持不变。显式启动参数可能使下次启动再次询问。</translation>
+    </message>
+    <message>
+        <source>Saved settings are disabled. This choice applies only to this startup.</source>
+        <translation>已禁用设置保存，本次选择只对这次启动生效。</translation>
+    </message>
+    <message>
+        <source>&amp;Keep all blocks</source>
+        <translation>保存完整区块(&amp;K)</translation>
+    </message>
+    <message>
+        <source>Keep &amp;pruning</source>
+        <translation>保留修剪(&amp;P)</translation>
+    </message>
+    <message>
+        <source>Settings could not be saved</source>
+        <translation>无法保存设置</translation>
+    </message>
+    <message>
+        <source>The wallet is running with your choice for this session, but it could not be saved. You may be asked again at the next startup.</source>
+        <translation>钱包本次已按所选方式运行，但未能保存设置，下次启动可能再次询问。</translation>
+    </message>
+    <message>
         <source>A fatal error occurred. %1 can no longer continue safely and will quit.</source>
         <translation>发生致命错误。%1 已经无法继续安全运行并即将退出。</translation>
     </message>

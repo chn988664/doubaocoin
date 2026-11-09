@@ -11,9 +11,12 @@
 #include <common/init.h>
 #include <common/system.h>
 #include <init.h>
+#include <index/txindex.h>
+#include <index/txospenderindex.h>
 #include <interfaces/handler.h>
 #include <interfaces/init.h>
 #include <interfaces/node.h>
+#include <node/blockstorage.h>
 #include <node/context.h>
 #include <node/interface_ui.h>
 #include <noui.h>
@@ -30,6 +33,7 @@
 #include <qt/utilitydialog.h>
 #include <qt/winshutdownmonitor.h>
 #include <uint256.h>
+#include <univalue.h>
 #include <util/btcsignals.h>
 #include <util/exception.h>
 #include <util/log.h>
@@ -46,7 +50,10 @@
 #endif // ENABLE_WALLET
 
 #include <chrono>
+#include <filesystem>
+#include <map>
 #include <memory>
+#include <system_error>
 
 #include <QApplication>
 #include <QDebug>
@@ -54,6 +61,7 @@
 #include <QLibraryInfo>
 #include <QLocale>
 #include <QMessageBox>
+#include <QPushButton>
 #include <QSettings>
 #include <QThread>
 #include <QTimer>
@@ -317,6 +325,110 @@ void BitcoinApplication::parameterSetup()
 void BitcoinApplication::InitPruneSetting(int64_t prune_MiB)
 {
     optionsModel->SetPruneTargetGB(PruneMiBtoGB(prune_MiB));
+}
+
+bool BitcoinApplication::resolvePruneConflict()
+{
+    const bool txindex = gArgs.GetBoolArg("-txindex", DEFAULT_TXINDEX);
+    const bool spenderindex = gArgs.GetBoolArg("-txospenderindex", DEFAULT_TXOSPENDERINDEX);
+    const int64_t prune = gArgs.GetIntArg("-prune", 0);
+    bool have_pruned{false};
+    if (prune <= 0 && !gArgs.GetBoolArg("-reindex", false)) {
+        // The block index stays in the datadir even with a custom -blocksdir.
+        const auto index_path = gArgs.GetDataDirNet() / "blocks" / "index";
+        // Leave filesystem-access failures to the native database diagnostics.
+        std::error_code stat_error;
+        if (std::filesystem::exists(index_path / "CURRENT", stat_error)) {
+            if (!AppInitLockDirectories()) return false;
+            try {
+                // Older launchers supplied pruning only on the command line.
+                // Read the native marker, not a guessed mode based on file sizes.
+                // Close this non-wiping handle before core opens the database.
+                node::BlockTreeDB db{{.path = index_path, .cache_bytes = 1_MiB, .wipe_data = false}};
+                db.ReadFlag("prunedblockfiles", have_pruned);
+            } catch (const dbwrapper_error& e) {
+                // Preserve native database-error/rebuild handling if inspection
+                // fails; never infer that pruning is safe from a corrupt DB.
+                LogWarning("Could not inspect pruning history: %s. Native initialization will diagnose the database.\n", e.what());
+            }
+        }
+    }
+    if (!have_pruned && (prune <= 0 || (!txindex && !spenderindex))) return true;
+
+    // Hold the native locks before offering to change shared settings. The later
+    // baseInitialize() call can acquire these same process-owned locks again.
+    if (!AppInitLockDirectories()) return false;
+
+    const bool save_settings = gArgs.GetSettingsPath();
+    QMessageBox dialog{QMessageBox::Warning, tr("Storage settings conflict"),
+        have_pruned
+            ? tr("Old block data has already been pruned. Continuing without pruning requires rebuilding and downloading the blockchain.")
+            : tr("Block pruning and full transaction indexes cannot be enabled together."), QMessageBox::Cancel, window};
+    dialog.setInformativeText(
+        tr("Keep all blocks: retain all blocks and use more disk space. If blocks were already pruned, a separate confirmation to rebuild and download the blockchain will be required.\n\n"
+           "Keep pruning: save disk space by deleting old block data; pause full transaction indexes without deleting the index files. Wallet transactions do not require these indexes.\n\n"
+           "Wallets and existing indexes will not be deleted by this choice.") + QLatin1String("\n\n") +
+        (have_pruned
+            ? tr("Keeping pruned data will not automatically delete more blocks. Synchronization will use more disk space; you can enable a storage limit in Options after startup.") + QLatin1String("\n\n")
+            : QString{}) +
+        (save_settings
+            ? tr("Your choice will be saved only after successful startup. Configuration files stay unchanged. Explicit startup arguments can cause this question to appear again.")
+            : tr("Saved settings are disabled. This choice applies only to this startup.")));
+    auto* indexes_button = dialog.addButton(tr("&Keep all blocks"), QMessageBox::ActionRole);
+    auto* pruning_button = dialog.addButton(tr("Keep &pruning"), QMessageBox::ActionRole);
+    dialog.setDefaultButton(QMessageBox::Cancel);
+    dialog.setEscapeButton(QMessageBox::Cancel);
+    dialog.exec();
+
+    std::map<std::string, common::SettingsValue> changes;
+    if (dialog.clickedButton() == indexes_button) {
+        // Preserve the pre-22.x string representation used by OptionsModel.
+        changes.emplace("prune", "0");
+        changes.emplace("txindex", txindex);
+        changes.emplace("txospenderindex", spenderindex);
+    } else if (dialog.clickedButton() == pruning_button) {
+        // Save the complete choice even if the pruning target only came from
+        // a shortcut/command line, so opening the EXE next time is consistent.
+        // A historical command-line-only target is unknown. Native manual
+        // pruning preserves the existing data without deleting more blocks to
+        // meet an invented budget; the user can enable a GUI limit afterwards.
+        changes.emplace("prune", std::to_string(prune > 0 ? prune : 1));
+        changes.emplace("txindex", false);
+        changes.emplace("txospenderindex", false);
+    } else {
+        return false;
+    }
+    for (const auto& [name, value] : changes) node().forceSetting(name, value);
+
+    if (save_settings) {
+        // A pruned directory can still fail initialization when choosing full
+        // indexes. Never save that choice if the native rebuild prompt is
+        // cancelled, or the next launch would lose the recovery choice.
+        connect(this, &BitcoinApplication::windowShown, this, [this, changes] {
+            std::map<std::string, common::SettingsValue> previous;
+            gArgs.LockSettings([&](common::Settings& settings) {
+                for (const auto& [name, value] : changes) {
+                    if (auto it = settings.rw_settings.find(name); it != settings.rw_settings.end()) previous.emplace(*it);
+                    settings.rw_settings[name] = value;
+                }
+            });
+            std::vector<std::string> errors;
+            if (!gArgs.WriteSettingsFile(&errors)) {
+                // Roll back only our storage options; an RPC may concurrently
+                // update unrelated settings such as the wallet startup list.
+                gArgs.LockSettings([&](common::Settings& settings) {
+                    for (const auto& [name, value] : changes) {
+                        if (auto it = previous.find(name); it != previous.end()) settings.rw_settings[name] = it->second;
+                        else settings.rw_settings.erase(name);
+                    }
+                });
+                QMessageBox::warning(window, tr("Settings could not be saved"),
+                    tr("The wallet is running with your choice for this session, but it could not be saved. You may be asked again at the next startup.") +
+                    QLatin1String("\n\n") + QString::fromStdString(util::Join(errors, "\n")));
+            }
+        }, Qt::SingleShotConnection);
+    }
+    return true;
 }
 
 void BitcoinApplication::requestInitialize()
@@ -661,6 +773,7 @@ int GuiMain(int argc, char* argv[])
     try
     {
         app.createWindow(networkStyle.data());
+        if (!app.resolvePruneConflict()) return EXIT_FAILURE;
         // Perform base initialization before spinning up initialization/shutdown thread
         // This is acceptable because this function only contains steps that are quick to execute,
         // so the GUI thread won't be held up.
